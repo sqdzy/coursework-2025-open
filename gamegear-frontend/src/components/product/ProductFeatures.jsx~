@@ -1,0 +1,13 @@
+const ProductFeatures = ({ features }) => {
+  return (
+    <ul className="list-disc pl-5 space-y-2">
+      {features.map((item) => (
+        <li key={item.id} className="text-gray-800">
+          {item.feature_name}: {item.value}
+        </li>
+      ))}
+    </ul>
+  );
+};
+
+export default ProductFeatures;

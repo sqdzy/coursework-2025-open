@@ -1,0 +1,10 @@
+Django>=5.0,<5.1
+djangorestframework
+psycopg2-binary
+django-cors-headers
+drf-yasg
+Faker
+django-filter
+dj-rest-auth
+Pillow
+weasyprint

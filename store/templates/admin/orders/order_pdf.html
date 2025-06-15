@@ -1,0 +1,154 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Активные Заказы</title>
+    <style>
+                @font-face {
+            font-family: "DejaVu Sans";
+            src: url("{{ STATIC_URL }}fonts/DejaVuSans.ttf");
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        @font-face {
+            font-family: "DejaVu Sans";
+            src: url("{{ STATIC_URL }}fonts/DejaVuSans-Bold.ttf");
+            font-weight: bold;
+            font-style: normal;
+        }
+
+
+        @page {
+            size: A4;
+            margin: 1.5cm;
+        }
+
+        body {
+            font-family: "DejaVu Sans", sans-serif !important;
+            font-size: 9pt;
+            line-height: 1.4;
+            color: #333;
+        }
+        h1 {
+            font-size: 14pt;
+            text-align: center;
+            border-bottom: 1px solid #ccc;
+            margin-bottom: 15px;
+            padding-bottom: 8px;
+        }
+        .date-generated {
+            text-align: right;
+            font-size: 9pt;
+            color: #666;
+            margin-bottom: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            font-size: 8.5pt;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 6px 8px;
+            text-align: left;
+            vertical-align: top;
+            word-wrap: break-word;
+        }
+        th {
+            background-color: #eaeaea;
+            color: #444;
+        }
+        tr {
+            page-break-inside: avoid;
+        }
+        .user-info {
+            white-space: normal;
+            word-wrap: break-word;
+        }
+        .order-items ul {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        .order-items li {
+            margin-bottom: 2px;
+        }
+        .total {
+            text-align: right;
+            white-space: nowrap;
+        }
+        .footer {
+            position: fixed;
+            bottom: 0.5cm;
+            left: 1.5cm;
+            right: 1.5cm;
+            text-align: center;
+            font-size: 8pt;
+            color: #777;
+        }
+    </style>
+</head>
+
+<body>
+<h1>Список Активных Заказов</h1>
+<div class="date-generated">Сгенерировано: {{ generation_date|date:"d.m.Y H:i" }}</div>
+
+{% if orders %}
+    <table>
+        <thead>
+        <tr>
+            <th>ID</th>
+            <th>Дата</th>
+            <th>Пользователь</th>
+            <th>Статус</th>
+            <th>Сумма</th>
+            <th>Состав Заказа</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for order_data in orders %}
+            <tr>
+                <td>{{ order_data.id }}</td>
+                <td>{{ order_data.order_date|date:"d.m.Y H:i" }}</td>
+                <td class="user-info">
+                    {{ order_data.user.username }}
+                    {% if order_data.user.get_full_name %}
+                        <br><small>({{ order_data.user.get_full_name }})</small>
+                    {% elif order_data.user.email %}
+                        <br><small>({{ order_data.user.email }})</small>
+                    {% endif %}
+                </td>
+                <td>{{ order_data.status.status|default:"-" }}</td>
+                {# Используем рассчитанную сумму #}
+                <td class="total">{{ order_data.calculated_total_amount|floatformat:2 }} ₽</td>
+                <td class="order-items">
+                    {# Используем подготовленный список товаров #}
+                    {% if order_data.items_list %}
+                        <ul>
+                            {% for item_data in order_data.items_list %}
+                                <li>
+                                    {{ item_data.name }} - {{ item_data.qty }} шт.
+                                    x {{ item_data.price_per_item|floatformat:2 }} ₽
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <span style="color: #888;">Нет позиций</span>
+                    {% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+{% else %}
+    <p>Нет активных заказов для отображения.</p>
+{% endif %}
+
+<div class="footer">
+    GameGear Store - Отчет по активным заказам
+</div>
+</body>
+</html>
