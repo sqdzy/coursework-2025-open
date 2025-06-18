@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:8000/api';
+const API_BASE_URL = 'https://api-gg.familycore.ru/api';
 
 
 async function handleApiResponse(response, operation = 'fetching data') {

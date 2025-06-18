@@ -15,11 +15,11 @@ import store
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = "django-insecure-h0lj3+k!998go36y#2-0$43iv!t78j37fn(u4^f$mwdlz*l6!y"
+SECRET_KEY = os.environ.get('SECRET_KEY')
+DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
-DEBUG = True
-
-ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
+# Добавляем наш новый домен API в разрешенные хосты
+ALLOWED_HOSTS = ['api-gg.familycore.ru', 'localhost', '127.0.0.1']
 
 INSTALLED_APPS = [
     'corsheaders',
@@ -72,13 +72,13 @@ WSGI_APPLICATION = "gamegear.wsgi.application"
 AUTH_USER_MODEL = 'store.User'
 
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql_psycopg2",
-        "NAME": "gamegear",
-        "USER": "postgres",
-        "PASSWORD": "140620",
-        "HOST": "127.0.0.1",
-        "PORT": "5432",
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ.get('POSTGRES_DB'),
+        'USER': os.environ.get('POSTGRES_USER'),
+        'PASSWORD': os.environ.get('POSTGRES_PASSWORD'),
+        'HOST': '127.0.0.1', # <-- ИЗМЕНЕНИЕ: используем localhost
+        'PORT': os.environ.get('POSTGRES_PORT'), # <-- Будем пробрасывать порт
     }
 }
 
@@ -105,15 +105,11 @@ USE_I18N = True
 
 USE_TZ = True
 
-STATIC_URL = "static/"
-
-STATICFILES_DIRS = [
-    BASE_DIR / "store" / "static",
-]
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
+    'https://gg.familycore.ru',
 ]
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -147,4 +143,5 @@ REST_FRAMEWORK = {
 
 }
 
-STATIC_ROOT = os.path.join(BASE_DIR, 'static')
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "mediafiles"

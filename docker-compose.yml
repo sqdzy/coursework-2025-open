@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    volumes:
+      - postgres_data_gg:/var/lib/postgresql/data/
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT}:5432"
+    env_file: ./.env
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    restart: unless-stopped
+
+  web:
+    build: .
+    volumes:
+      - media_volume_gg:/app/mediafiles
+    ports:
+      - "127.0.0.1:8001:8000"
+    env_file: ./.env
+    depends_on:
+      - db
+    restart: unless-stopped
+
+volumes:
+  postgres_data_gg:
+  media_volume_gg:

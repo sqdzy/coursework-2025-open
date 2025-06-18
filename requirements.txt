@@ -1,10 +1,4 @@
-Django>=5.0,<5.1
-djangorestframework
-psycopg2-binary
-django-cors-headers
-drf-yasg
-Faker
-django-filter
-dj-rest-auth
-Pillow
-weasyprint
+Django==5.0
+drf_yasg==1.21.10
+Faker==33.1.0
+weasyprint==65.1

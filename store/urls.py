@@ -2,7 +2,6 @@ from django.urls import path, include
 from rest_framework import routers
 
 from . import views
-from .views import faker_view
 
 router = routers.DefaultRouter()
 
@@ -29,6 +28,5 @@ urlpatterns = [
     path('api/auth/login-or-register/', views.LoginOrRegisterView.as_view(), name='login_or_register'),
     path('api/', include(router.urls)),
 
-    path('faker/', faker_view, name='faker'),
     path('api/homepage/', views.HomepageDataView.as_view(), name='homepage-data'),
 ]
