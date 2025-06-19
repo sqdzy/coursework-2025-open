@@ -12,13 +12,15 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 import os
 from pathlib import Path
 import store
+import sentry_sdk
+from sentry_sdk.integrations.django import DjangoIntegration
+SENTRY_DSN = os.environ.get('SENTRY_DSN', None)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.environ.get('SECRET_KEY')
-DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
+DEBUG = False
 
-# Добавляем наш новый домен API в разрешенные хосты
 ALLOWED_HOSTS = ['api-gg.familycore.ru', 'localhost', '127.0.0.1']
 
 INSTALLED_APPS = [
@@ -77,8 +79,8 @@ DATABASES = {
         'NAME': os.environ.get('POSTGRES_DB'),
         'USER': os.environ.get('POSTGRES_USER'),
         'PASSWORD': os.environ.get('POSTGRES_PASSWORD'),
-        'HOST': '127.0.0.1', # <-- ИЗМЕНЕНИЕ: используем localhost
-        'PORT': os.environ.get('POSTGRES_PORT'), # <-- Будем пробрасывать порт
+        'HOST': os.environ.get('POSTGRES_HOST'),
+        'PORT': os.environ.get('POSTGRES_PORT'),
     }
 }
 
@@ -108,8 +110,17 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+USE_X_FORWARDED_HOST = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 CORS_ALLOWED_ORIGINS = [
     'https://gg.familycore.ru',
+    'https://api-gg.familycore.ru',
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    'https://gg.familycore.ru',
+    'https://api-gg.familycore.ru'
 ]
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -145,3 +156,16 @@ REST_FRAMEWORK = {
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "mediafiles"
+
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[
+            DjangoIntegration(),
+        ],
+        traces_sample_rate=1.0,
+        environment=os.environ.get('DJANGO_ENVIRONMENT', 'development'),
+        profile_session_sample_rate=1.0,
+        send_default_pii=True,
+        profile_lifecycle = "trace",
+    )

@@ -1,11 +1,8 @@
 import random
-from decimal import Decimal
 from django.db.models import OuterRef, Subquery, DecimalField, Case, When, F
 from django.db.models.functions import Coalesce
-from django.http import HttpResponse
 from django.contrib.auth import get_user_model, authenticate
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import serializers
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
@@ -13,26 +10,24 @@ from .serializers import LoginOrRegisterSerializer, CartItemSerializer, OrderSer
     DeliveryMethodSerializer, PaymentMethodSerializer, BannerSerializer, CategorySerializer, CategoryDetailSerializer, \
     ReviewSerializer
 from django.utils import timezone
-from datetime import timedelta
-from faker import Faker
 from rest_framework import status, mixins
-from django.db import IntegrityError, transaction
-from . import serializers
+from django.db import transaction
 
 from .models import (
-    User, Category, Brand, Feature, OrderStatus, PaymentMethod,
-    DeliveryMethod, Product, ProductImage, ProductFeatureValue,
+    User, Feature, OrderStatus, PaymentMethod,
+    DeliveryMethod,
     Order, OrderItem, Banner, BannerTarget, Promotion, PromotionalProduct,
     Review, CartItem, ReviewImage
 )
 from rest_framework import viewsets, permissions, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from django.db.models import Prefetch, Q
+from django.db.models import Prefetch
 from .models import Product, ProductImage, Category, Brand, ProductFeatureValue
 from .serializers import ProductSerializer, ProductListSerializer
 from .utils import annotate_product_prices
-
+from rest_framework import serializers as rest_serializers
+from . import serializers
 
 
 class IsOwnerOrReadOnly(permissions.BasePermission):
@@ -266,29 +261,29 @@ class OrderViewSet(viewsets.ModelViewSet):
         user = request.user
 
         try:
-
             with transaction.atomic():
 
                 cart_items = CartItem.objects.filter(user=user).select_for_update().select_related('product')
 
-                if not cart_items.exists():
+                if not cart_items:
                     return Response({"detail": "Ваша корзина пуста."}, status=status.HTTP_400_BAD_REQUEST)
 
                 products_to_update = []
                 for item in cart_items:
+
                     product = item.product
+                    product.refresh_from_db(fields=['stock'])
+
                     if product.stock < item.quantity:
-                        return Response(
-                            {
-                                "detail": f"Недостаточно товара '{product.name}' на складе. Доступно: {product.stock} шт., в заказе: {item.quantity} шт."},
-                            status=status.HTTP_400_BAD_REQUEST
+                        raise rest_serializers.ValidationError(
+                            f"Недостаточно товара '{product.name}' на складе. Доступно: {product.stock} шт., в заказе: {item.quantity} шт."
                         )
+
                     product.stock -= item.quantity
                     products_to_update.append(product)
 
                 new_status, _ = OrderStatus.objects.get_or_create(status="Новый",
                                                                   defaults={'description': 'Заказ создан'})
-
                 order = Order.objects.create(
                     user=user,
                     delivery_address=validated_data['delivery_address'],
@@ -314,11 +309,14 @@ class OrderViewSet(viewsets.ModelViewSet):
 
                 final_order = self.get_queryset().get(pk=order.pk)
                 read_serializer = OrderSerializer(final_order, context=self.get_serializer_context())
-                return Response(read_serializer.data, status=status.HTTP_201_CREATED,
-                                headers=self.get_success_headers(read_serializer.data))
+                headers = self.get_success_headers(read_serializer.data)
+                return Response(read_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+
+        except rest_serializers.ValidationError as e:
+            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
 
         except Exception as e:
-
             import traceback
             print(f"Error creating order for user {user.id}: {e}")
             print(traceback.format_exc())
@@ -688,7 +686,7 @@ class CartItemViewSet(
         total_quantity_needed = current_quantity_in_cart + quantity
 
         if product.stock < total_quantity_needed:
-            raise serializers.ValidationError(
+            raise rest_serializers.ValidationError(
                 f"Недостаточно товара '{product.name}' на складе. Доступно: {product.stock} шт., в корзине уже: {current_quantity_in_cart} шт."
             )
 
@@ -701,7 +699,7 @@ class CartItemViewSet(
         new_quantity = serializer.validated_data.get('quantity')
 
         if product.stock < new_quantity:
-            raise serializers.ValidationError(
+            raise rest_serializers.ValidationError(
                 f"Недостаточно товара '{product.name}' на складе. Доступно: {product.stock} шт."
             )
 
