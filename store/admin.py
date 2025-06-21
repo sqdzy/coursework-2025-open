@@ -1,6 +1,5 @@
 import datetime
 import io
-import os
 from decimal import Decimal, InvalidOperation
 
 from django.contrib import admin
@@ -149,6 +148,7 @@ class ProductAdmin(admin.ModelAdmin):
     @admin.display(description="Кол-во отзывов")
     def review_count_display(self, obj):
         return obj.get_review_count()
+
 
 class OrderItemInline(admin.TabularInline):
     model = OrderItem
@@ -390,78 +390,103 @@ class BannerAdmin(admin.ModelAdmin):
 
     is_currently_active.short_description = 'Активен сейчас?'
 
+
 class ReviewImageInline(admin.TabularInline):
     model = ReviewImage
-    extra = 0 
+    extra = 0
     readonly_fields = ('image_preview', 'uploaded_at')
-    fields = ('image', 'image_preview', 'uploaded_at') 
+    fields = ('image', 'image_preview', 'uploaded_at')
 
     @admin.display(description="Предпросмотр")
     def image_preview(self, obj):
         if obj.image:
-            return format_html('<a href="{0}" target="_blank"><img src="{0}" style="max-height: 80px; max-width: 100px;" /></a>', obj.image.url)
+            return format_html(
+                '<a href="{0}" target="_blank"><img src="{0}" style="max-height: 80px; max-width: 100px;" /></a>',
+                obj.image.url)
         return "Нет изображения"
 
 
 @admin.register(Review)
 class ReviewAdmin(admin.ModelAdmin):
-    list_display = ('product_link', 'user_link', 'rating', 'created_at_formatted', 'is_approved', 'short_text', 'image_count')
+    list_display = (
+        'product_link', 'user_link', 'rating', 'created_at_formatted', 'is_approved', 'display_images', 'short_text')
     list_filter = ('is_approved', 'rating', 'created_at', 'product')
     search_fields = ('user__username', 'product__name', 'text')
     list_editable = ('is_approved',)
     actions = ['approve_selected_reviews', 'unapprove_selected_reviews']
-    readonly_fields = ('created_at', 'updated_at') 
-    list_display_links = None 
-    autocomplete_fields = ('product', 'user') 
-
-    inlines = [ReviewImageInline] 
-
+    readonly_fields = ('created_at', 'updated_at')
+    list_display_links = None
+    autocomplete_fields = ('product', 'user')
+    inlines = [ReviewImageInline]
     fieldsets = (
         (None, {'fields': ('product', 'user', 'rating', 'is_approved')}),
         ('Текст отзыва', {'fields': ('text',)}),
         ('Даты', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
     )
 
+    list_select_related = ('product', 'user')
+
+    def get_queryset(self, request):
+
+        return super().get_queryset(request).prefetch_related('images')
+
+    @admin.display(description="Прикрепленные фото")
+    def display_images(self, obj: Review) -> str:
+        """
+        Отображает миниатюры прикрепленных к отзыву изображений.
+        """
+
+        images = obj.images.all()
+        if not images:
+            return "Нет фото"
+
+        image_html_parts = []
+        for review_image in images:
+            if review_image.image and hasattr(review_image.image, 'url'):
+                image_html_parts.append(
+                    f'<a href="{review_image.image.url}" target="_blank">'
+                    f'<img src="{review_image.image.url}" style="max-height: 60px; max-width: 60px; margin-right: 5px; border: 1px solid #ddd; border-radius: 4px;" />'
+                    f'</a>'
+                )
+
+        if not image_html_parts:
+            return "Файлы не найдены"
+
+        return format_html(''.join(image_html_parts))
+
     @admin.display(description="Товар", ordering='product__name')
-    def product_link(self, obj):
-        
+    def product_link(self, obj: Review) -> str:
         if obj.product_id:
-             link = reverse("admin:store_product_change", args=[obj.product.id])
-             return format_html('<a href="{}">{}</a>', link, obj.product.name)
+            link = reverse("admin:store_product_change", args=[obj.product.id])
+            return format_html('<a href="{}">{}</a>', link, obj.product.name)
         return "N/A"
 
-
     @admin.display(description="Пользователь", ordering='user__username')
-    def user_link(self, obj):
-        
+    def user_link(self, obj: Review) -> str:
         if obj.user_id:
-             link = reverse("admin:store_user_change", args=[obj.user.id])
-             return format_html('<a href="{}">{}</a>', link, obj.user.username)
+            link = reverse("admin:store_user_change", args=[obj.user.id])
+            return format_html('<a href="{}">{}</a>', link, obj.user.username)
         return "N/A"
 
     @admin.display(description="Текст (кратко)")
-    def short_text(self, obj):
-        return obj.text[:80] + '...' if len(obj.text) > 80 else obj.text
+    def short_text(self, obj: Review) -> str:
+        return obj.text[:60] + '...' if len(obj.text) > 60 else obj.text
 
     @admin.display(description="Дата создания", ordering='created_at')
-    def created_at_formatted(self, obj):
+    def created_at_formatted(self, obj: Review) -> str:
         if not obj.created_at: return "-"
         return timezone.localtime(obj.created_at).strftime('%d.%m.%Y %H:%M')
 
-    @admin.display(description="Кол-во фото", ordering='images__count')
-    def image_count(self, obj):
-        return obj.images.count()
-    image_count.admin_order_field = 'images__count'
-
     @admin.action(description='Одобрить выбранные отзывы')
-    def approve_selected_reviews(self, request, queryset):
+    def approve_selected_reviews(self, request, queryset) -> None:
         updated_count = queryset.update(is_approved=True)
         self.message_user(request, f"{updated_count} отзывов были одобрены.")
 
     @admin.action(description='Снять одобрение с выбранных отзывов')
-    def unapprove_selected_reviews(self, request, queryset):
+    def unapprove_selected_reviews(self, request, queryset) -> None:
         updated_count = queryset.update(is_approved=False)
         self.message_user(request, f"С {updated_count} отзывов было снято одобрение.")
+
 
 @admin.register(BannerTarget)
 class BannerTargetAdmin(admin.ModelAdmin):

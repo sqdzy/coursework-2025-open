@@ -14,6 +14,7 @@ from pathlib import Path
 import store
 import sentry_sdk
 from sentry_sdk.integrations.django import DjangoIntegration
+
 SENTRY_DSN = os.environ.get('SENTRY_DSN', None)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -31,6 +32,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    'silk',
     "store",
     'rest_framework',
     'drf_yasg',
@@ -43,6 +45,7 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     "django.middleware.security.SecurityMiddleware",
     'whitenoise.middleware.WhiteNoiseMiddleware',
+    'silk.middleware.SilkyMiddleware',
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -101,7 +104,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = "ru-ru"
 
-TIME_ZONE = "UTC"
+TIME_ZONE = "Europe/Moscow"
 
 USE_I18N = True
 
@@ -157,6 +160,11 @@ REST_FRAMEWORK = {
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "mediafiles"
 
+SILKY_AUTHENTICATION = True
+SILKY_AUTHORISATION = True
+SILKY_PROFILING_ENABLED = True
+SILKY_META = True
+
 if SENTRY_DSN:
     sentry_sdk.init(
         dsn=SENTRY_DSN,
@@ -167,5 +175,5 @@ if SENTRY_DSN:
         environment=os.environ.get('DJANGO_ENVIRONMENT', 'development'),
         profile_session_sample_rate=1.0,
         send_default_pii=True,
-        profile_lifecycle = "trace",
+        profile_lifecycle="trace",
     )

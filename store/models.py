@@ -1,9 +1,10 @@
 from decimal import Decimal
+from typing import Optional, Union, Any
 
 from django.conf import settings
 from django.db import models
-from django.db.models import Avg, Min
-from django.core.validators import MinValueValidator, MaxValueValidator
+from django.db.models import Avg
+from django.core.validators import MinValueValidator
 from django.contrib.auth.models import AbstractUser, Group, Permission
 from django.utils import timezone
 
@@ -37,7 +38,10 @@ class User(AbstractUser):
         verbose_name = "Пользователь"
         verbose_name_plural = "Пользователи"
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """
+        Возвращает строковое представление пользователя.
+        """
         return self.username or f"User {self.pk}"
 
 
@@ -49,7 +53,10 @@ class Category(models.Model):
         verbose_name = 'Категория'
         verbose_name_plural = 'Категории'
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """
+        Возвращает название категории.
+        """
         return self.name
 
 
@@ -62,7 +69,10 @@ class Brand(models.Model):
         verbose_name = 'Бренд'
         verbose_name_plural = 'Бренды'
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """
+        Возвращает название бренда.
+        """
         return self.name
 
 
@@ -73,7 +83,10 @@ class Feature(models.Model):
         verbose_name = 'Характеристика'
         verbose_name_plural = 'Характеристики'
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """
+        Возвращает название характеристики.
+        """
         return self.name
 
 
@@ -85,7 +98,10 @@ class OrderStatus(models.Model):
         verbose_name = 'Статус заказа'
         verbose_name_plural = 'Статусы заказов'
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """
+        Возвращает статус заказа.
+        """
         return self.status
 
 
@@ -97,7 +113,10 @@ class PaymentMethod(models.Model):
         verbose_name = 'Способ оплаты'
         verbose_name_plural = 'Способы оплаты'
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """
+        Возвращает название способа оплаты.
+        """
         return self.method_name
 
 
@@ -109,31 +128,45 @@ class DeliveryMethod(models.Model):
         verbose_name = 'Способ доставки'
         verbose_name_plural = 'Способы доставки'
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """
+        Возвращает название способа доставки.
+        """
         return self.method_name
 
 
 class Product(models.Model):
     name = models.CharField('Название товара', max_length=255)
-    price = models.DecimalField('Цена', max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))])
+    price = models.DecimalField('Цена', max_digits=12, decimal_places=2,
+                                validators=[MinValueValidator(Decimal('0.01'))])
     category = models.ForeignKey(Category, verbose_name='Категория', on_delete=models.CASCADE, related_name='products')
     brand = models.ForeignKey(Brand, verbose_name='Бренд', on_delete=models.CASCADE, related_name='products')
     created_at = models.DateTimeField('Дата добавления', auto_now_add=True, db_index=True)
-    stock = models.PositiveIntegerField('Количество на складе', default=0, help_text='Количество доступных единиц товара')
+    stock = models.PositiveIntegerField('Количество на складе', default=0,
+                                        help_text='Количество доступных единиц товара')
 
     class Meta:
         verbose_name = 'Товар'
         verbose_name_plural = 'Товары'
         ordering = ['-created_at']
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """
+        Возвращает название товара.
+        """
         return self.name
 
-    def get_average_rating(self):
+    def get_average_rating(self) -> float:
+        """
+        Рассчитывает и возвращает средний рейтинг товара на основе одобренных отзывов.
+        """
         avg = self.reviews.filter(is_approved=True).aggregate(Avg('rating'))['rating__avg']
         return round(avg, 1) if avg is not None else 0.0
 
-    def get_review_count(self):
+    def get_review_count(self) -> int:
+        """
+        Возвращает количество одобренных отзывов для товара.
+        """
         return self.reviews.filter(is_approved=True).count()
 
 
@@ -147,7 +180,10 @@ class ProductImage(models.Model):
         verbose_name = 'Изображение товара'
         verbose_name_plural = 'Изображения товаров'
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """
+        Возвращает строковое представление изображения товара.
+        """
         product_name = self.product.name if self.product else "Unknown Product"
         return f"Изображение для {product_name}"
 
@@ -165,18 +201,26 @@ class ProductFeatureValue(models.Model):
 
         unique_together = ('product', 'feature')
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """
+        Возвращает строковое представление значения характеристики товара.
+        """
         feature_name = self.feature.name if self.feature else "Unknown Feature"
         return f"{feature_name}: {self.value}"
 
 
-def review_image_upload_path(instance, filename):
+def review_image_upload_path(instance: 'ReviewImage', filename: str) -> str:
+    """
+    Генерирует путь для загрузки изображения отзыва.
+    """
     return f'reviews/{instance.review.id}/{filename}'
 
+
 class Review(models.Model):
-    RATING_CHOICES = [ (i, str(i)) for i in range(1, 6) ]
+    RATING_CHOICES = [(i, str(i)) for i in range(1, 6)]
     product = models.ForeignKey('Product', on_delete=models.CASCADE, related_name='reviews', verbose_name='Товар')
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='reviews', verbose_name='Пользователь')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='reviews',
+                             verbose_name='Пользователь')
     rating = models.IntegerField('Оценка', choices=RATING_CHOICES, db_index=True)
     text = models.TextField('Текст отзыва')
     created_at = models.DateTimeField('Дата создания', auto_now_add=True, db_index=True)
@@ -189,7 +233,10 @@ class Review(models.Model):
         ordering = ['-created_at']
         unique_together = ('product', 'user')
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """
+        Возвращает строковое представление отзыва.
+        """
         return f"Отзыв от {self.user.username} на {self.product.name} ({self.rating}*)"
 
 
@@ -203,8 +250,13 @@ class ReviewImage(models.Model):
         verbose_name_plural = 'Изображения отзывов'
         ordering = ['uploaded_at']
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """
+        Возвращает строковое представление изображения отзыва.
+        """
         return f"Изображение для отзыва {self.review.id}"
+
+
 class Order(models.Model):
     user = models.ForeignKey(User, verbose_name='Пользователь', on_delete=models.CASCADE,
                              related_name='orders')
@@ -224,12 +276,17 @@ class Order(models.Model):
         verbose_name_plural = 'Заказы'
         ordering = ['-order_date']
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """
+        Возвращает строковое представление заказа.
+        """
         user_str = self.user.username if self.user else "Unknown User"
         return f"Заказ #{self.id} от {user_str}"
 
-    def update_total_amount(self):
-        """Пересчитывает и сохраняет общую сумму заказа на основе его позиций."""
+    def update_total_amount(self) -> None:
+        """
+        Пересчитывает и сохраняет общую сумму заказа на основе его позиций.
+        """
         total = self.items.aggregate(
             total=models.Sum(models.F('qty') * models.F('price_per_item'))
         )['total']
@@ -237,7 +294,10 @@ class Order(models.Model):
         self.save(update_fields=['total_amount'])
 
     @property
-    def calculated_total_amount(self):
+    def calculated_total_amount(self) -> Decimal:
+        """
+        Вычисляет общую сумму заказа без сохранения.
+        """
         total = self.items.aggregate(
             total=models.Sum(models.F('qty') * models.F('price_per_item'))
         )['total']
@@ -257,21 +317,33 @@ class OrderItem(models.Model):
 
         unique_together = ('order', 'product')
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """
+        Возвращает строковое представление позиции заказа.
+        """
         product_str = self.product.name if self.product else "Unknown Product"
         order_id = self.order.id if self.order else "Unknown Order"
         return f"{product_str} ({self.qty} шт.) (Заказ #{order_id})"
 
     @property
-    def total_item_price(self):
+    def total_item_price(self) -> Decimal:
+        """
+        Рассчитывает общую стоимость для данной позиции заказа.
+        """
         return (self.qty or 0) * (self.price_per_item or Decimal('0.00'))
 
-    def save(self, *args, **kwargs):
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        """
+        Сохраняет позицию заказа и обновляет общую сумму заказа.
+        """
         super().save(*args, **kwargs)
         if self.order:
             self.order.update_total_amount()
 
-    def delete(self, *args, **kwargs):
+    def delete(self, *args: Any, **kwargs: Any) -> None:
+        """
+        Удаляет позицию заказа и обновляет общую сумму заказа.
+        """
         order = self.order
         super().delete(*args, **kwargs)
         if order:
@@ -303,16 +375,21 @@ class Banner(models.Model):
         verbose_name_plural = 'Баннеры'
         ordering = ['sort_order', '-created_at']
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """
+        Возвращает заголовок баннера.
+        """
         return self.title
 
     @property
-    def is_currently_active(self):
-        """Проверяет, активен ли баннер в данный момент времени."""
+    def is_currently_active(self) -> bool:
+        """
+        Проверяет, активен ли баннер в данный момент времени.
+        """
         now = timezone.now()
         if not self.is_active:
             return False
-        if self.start_date > now:
+        if self.start_date and self.start_date > now:
             return False
         if self.end_date and self.end_date < now:
             return False
@@ -336,12 +413,17 @@ class BannerTarget(models.Model):
         verbose_name_plural = 'Цели баннеров'
         unique_together = ('banner', 'target_type', 'target_id')
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """
+        Возвращает строковое представление цели баннера.
+        """
         banner_title = self.banner.title if self.banner else "Unknown Banner"
         return f"{banner_title} → {self.get_target_type_display()} #{self.target_id}"
 
-    def get_target(self):
-        """Возвращает связанный объект (Product, Brand, Category) или None."""
+    def get_target(self) -> Optional[Union['Product', 'Brand', 'Category']]:
+        """
+        Возвращает связанный объект (Product, Brand, Category) или None.
+        """
         model_map = {
             'product': Product,
             'brand': Brand,
@@ -380,12 +462,17 @@ class Promotion(models.Model):
         verbose_name_plural = 'Акции'
         ordering = ['-start_date', 'name']
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """
+        Возвращает название акции.
+        """
         return self.name
 
     @property
-    def is_currently_active(self):
-        """Проверяет, активна ли акция в данный момент времени."""
+    def is_currently_active(self) -> bool:
+        """
+        Проверяет, активна ли акция в данный момент времени.
+        """
         now = timezone.now()
         if not self.is_active:
             return False
@@ -416,13 +503,18 @@ class PromotionalProduct(models.Model):
         unique_together = ('product', 'promotion')
         ordering = ['promotion', 'product__name']
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """
+        Возвращает строковое представление акционного товара.
+        """
         product_str = self.product.name if self.product else "Unknown Product"
         promo_str = self.promotion.name if self.promotion else "Unknown Promotion"
         return f"{product_str} ({promo_str})"
 
-    def get_calculated_promotional_price(self):
-        """Рассчитывает акционную цену на основе типа скидки акции."""
+    def get_calculated_promotional_price(self) -> Optional[Decimal]:
+        """
+        Рассчитывает акционную цену на основе типа скидки акции.
+        """
         if not self.product or not self.promotion:
             return None
 
@@ -441,13 +533,14 @@ class PromotionalProduct(models.Model):
             return base_price
 
     @property
-    def effective_price(self):
-        """Возвращает актуальную акционную цену (рассчитанную или указанную)."""
+    def effective_price(self) -> Optional[Decimal]:
+        """
+        Возвращает актуальную акционную цену (рассчитанную или указанную).
+        """
         return self.get_calculated_promotional_price()
 
 
 class CartItem(models.Model):
-    """Модель для хранения товара в корзине пользователя."""
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -473,14 +566,19 @@ class CartItem(models.Model):
         unique_together = ('user', 'product')
         ordering = ['-added_at']
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """
+        Возвращает строковое представление позиции в корзине.
+        """
         user_str = self.user.username if self.user else "Unknown User"
         product_str = self.product.name if self.product else "Unknown Product"
         return f"{self.quantity} x {product_str} ({user_str})"
 
     @property
-    def current_price_per_item(self):
-        """Возвращает текущую актуальную цену за единицу товара (акционную или базовую)."""
+    def current_price_per_item(self) -> Decimal:
+        """
+        Возвращает текущую актуальную цену за единицу товара (акционную или базовую).
+        """
         now = timezone.now()
         product = self.product
 
@@ -489,19 +587,7 @@ class CartItem(models.Model):
 
         base_price = product.price
 
-        active_promo = PromotionalProduct.objects.filter(
-            product=product,
-            promotion__is_active=True,
-            promotion__start_date__lte=now,
-        ).filter(
-            models.Q(promotion__end_date__isnull=True) | models.Q(promotion__end_date__gte=now)
-        ).order_by(
-
-            'promotional_price'
-        ).first()
-
         min_effective_price = base_price
-        has_active_promo = False
 
         active_promos = PromotionalProduct.objects.filter(
             product=product,
@@ -515,19 +601,19 @@ class CartItem(models.Model):
             effective_price = promo_product.effective_price
             if effective_price is not None and effective_price < min_effective_price:
                 min_effective_price = effective_price
-                has_active_promo = True
 
         return min_effective_price
 
     @property
-    def total_price(self):
-        """Рассчитывает общую стоимость для этой позиции корзины."""
+    def total_price(self) -> Decimal:
+        """
+        Рассчитывает общую стоимость для этой позиции корзины.
+        """
         quantity = self.quantity or 0
         return quantity * self.current_price_per_item
 
 
 class WishlistItem(models.Model):
-    """Промежуточная модель для связи User и Product (Список желаний)."""
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -548,7 +634,10 @@ class WishlistItem(models.Model):
         unique_together = ('user', 'product')
         ordering = ['-added_at']
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """
+        Возвращает строковое представление элемента списка желаний.
+        """
         user_str = self.user.username if self.user else "Unknown User"
         product_str = self.product.name if self.product else "Unknown Product"
         return f"{product_str} в списке желаний у {user_str}"

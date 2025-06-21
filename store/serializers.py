@@ -1,3 +1,4 @@
+from typing import Any, Dict, Optional
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from .models import (
@@ -56,7 +57,6 @@ class DeliveryMethodSerializer(serializers.ModelSerializer):
 class ProductImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductImage
-
         fields = ['id', 'image', 'main_image']
 
 
@@ -65,7 +65,6 @@ class ProductFeatureValueSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ProductFeatureValue
-
         fields = ['id', 'feature', 'feature_name', 'value']
         read_only_fields = ('feature_name',)
 
@@ -99,19 +98,22 @@ class ReviewSerializer(serializers.ModelSerializer):
             'product': {'write_only': True, 'required': True}
         }
 
-    def validate_rating(self, value):
+    def validate_rating(self, value: int) -> int:
+        """Проверяет, что рейтинг находится в диапазоне от 1 до 5."""
         if not 1 <= value <= 5:
             raise serializers.ValidationError("Оценка должна быть от 1 до 5.")
         return value
 
-    def validate_text(self, value):
+    def validate_text(self, value: str) -> str:
+        """Проверяет, что текст отзыва не пустой и достаточной длины."""
         if not value.strip():
             raise serializers.ValidationError("Текст отзыва не может быть пустым.")
         if len(value) < 10:
             raise serializers.ValidationError("Текст отзыва слишком короткий (минимум 10 символов).")
         return value
 
-    def validate(self, data):
+    def validate(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Общая валидация: проверка аутентификации и отсутствие повторных отзывов."""
         request = self.context.get('request')
         user = request.user if request and hasattr(request, 'user') else None
 
@@ -128,13 +130,14 @@ class ReviewSerializer(serializers.ModelSerializer):
                 )
         return data
 
-    def create(self, validated_data):
+    def create(self, validated_data: Dict[str, Any]) -> Review:
+        """Создает отзыв, игнорируя загруженные изображения."""
         validated_data.pop('uploaded_images', None)
         return super().create(validated_data)
 
-    def update(self, instance, validated_data):
+    def update(self, instance: Review, validated_data: Dict[str, Any]) -> Review:
+        """Обновляет отзыв, игнорируя загруженные изображения."""
         validated_data.pop('uploaded_images', None)
-
         return super().update(instance, validated_data)
 
 
@@ -163,14 +166,15 @@ class ProductSerializer(serializers.ModelSerializer):
             'category', 'category_id', 'brand', 'brand_id', 'created_at',
             'images', 'features', 'average_rating', 'review_count',
         ]
-
         read_only_fields = ['id', 'created_at', 'images', 'features', 'average_rating', 'review_count', 'price',
                             'base_price', 'promotional_price']
 
-    def get_average_rating(self, obj):
+    def get_average_rating(self, obj: Product) -> float:
+        """Возвращает средний рейтинг товара."""
         return obj.get_average_rating()
 
-    def get_review_count(self, obj):
+    def get_review_count(self, obj: Product) -> int:
+        """Возвращает количество отзывов для товара."""
         return obj.get_review_count()
 
 
@@ -194,15 +198,16 @@ class ProductListSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-    def get_main_image(self, obj):
+    def get_main_image(self, obj: Product) -> Optional[str]:
+        """Возвращает URL главного изображения товара."""
         img_obj = obj.main_image_list[0] if hasattr(obj, 'main_image_list') and obj.main_image_list else None
         if img_obj and img_obj.image:
             request = self.context.get('request')
             return request.build_absolute_uri(img_obj.image.url) if request else img_obj.image.url
         first_img = obj.images.first()
         if first_img and first_img.image:
-             request = self.context.get('request')
-             return request.build_absolute_uri(first_img.image.url) if request else first_img.image.url
+            request = self.context.get('request')
+            return request.build_absolute_uri(first_img.image.url) if request else first_img.image.url
         return None
 
 
@@ -251,7 +256,8 @@ class BannerTargetSerializer(serializers.ModelSerializer):
         fields = ['id', 'banner', 'target_type', 'target_id', 'target_name']
         read_only_fields = ['banner', 'target_name']
 
-    def get_target_name(self, obj):
+    def get_target_name(self, obj: BannerTarget) -> str:
+        """Возвращает строковое представление целевого объекта баннера."""
         target = obj.get_target()
         return str(target) if target else "Invalid Target"
 
@@ -289,31 +295,6 @@ class PromotionalProductSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'product', 'promotion']
 
 
-class ProductSerializer(serializers.ModelSerializer):
-    category = CategorySerializer(read_only=True)
-    brand = BrandSerializer(read_only=True)
-    images = ProductImageSerializer(many=True, read_only=True)
-    features = ProductFeatureValueSerializer(source='feature_values', many=True, read_only=True)
-    average_rating = serializers.FloatField(source='get_average_rating', read_only=True)
-    review_count = serializers.IntegerField(source='get_review_count', read_only=True)
-    base_price = serializers.DecimalField(source='price', max_digits=12, decimal_places=2, read_only=True)
-    promotional_price = serializers.DecimalField(source='current_promotional_price', max_digits=12, decimal_places=2, read_only=True, required=False, allow_null=True)
-    price = serializers.DecimalField(source='actual_price', max_digits=12, decimal_places=2, read_only=True)
-    stock = serializers.IntegerField(read_only=True)
-
-    category_id = serializers.PrimaryKeyRelatedField(queryset=Category.objects.all(), source='category', write_only=True, label="Category ID")
-    brand_id = serializers.PrimaryKeyRelatedField(queryset=Brand.objects.all(), source='brand', write_only=True, label="Brand ID")
-
-    class Meta:
-        model = Product
-        fields = [
-            'id', 'name', 'price', 'base_price', 'promotional_price', 'stock',
-            'category', 'category_id', 'brand', 'brand_id', 'created_at',
-            'images', 'features', 'average_rating', 'review_count',
-        ]
-        read_only_fields = ['id', 'created_at', 'images', 'features', 'average_rating', 'review_count', 'price', 'base_price', 'promotional_price', 'stock']
-
-
 class CategoryDetailSerializer(serializers.ModelSerializer):
     """
     Сериализатор для детального представления категории,
@@ -337,7 +318,7 @@ User = get_user_model()
 
 
 class LoginOrRegisterSerializer(serializers.Serializer):
-    """Сериализатор для приема username и password."""
+    """Сериализатор для приема username и password и их валидации."""
     username = serializers.CharField(max_length=150, write_only=True)
     password = serializers.CharField(
         style={'input_type': 'password'},
@@ -349,7 +330,8 @@ class LoginOrRegisterSerializer(serializers.Serializer):
     user_id = serializers.IntegerField(source='user.id', read_only=True)
     username_out = serializers.CharField(source='user.username', read_only=True)
 
-    def validate(self, data):
+    def validate(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Проверяет наличие username и password."""
         username = data.get('username')
         password = data.get('password')
 
@@ -358,7 +340,6 @@ class LoginOrRegisterSerializer(serializers.Serializer):
                 "Необходимо указать 'username' и 'password'.",
                 code='authorization'
             )
-
         return data
 
 
@@ -383,22 +364,21 @@ class CartItemSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ('id', 'user', 'product', 'added_at', 'total_price', 'current_price_per_item')
 
-    def validate_quantity(self, value):
+    def validate_quantity(self, value: int) -> int:
+        """Проверяет, что количество позиции в корзине не меньше 1."""
         if value < 1:
             raise serializers.ValidationError("Количество должно быть не меньше 1.")
         return value
 
-    def update(self, instance, validated_data):
+    def update(self, instance: CartItem, validated_data: Dict[str, Any]) -> CartItem:
+        """Обновляет количественное значение позиции в корзине."""
         instance.quantity = validated_data.get('quantity', instance.quantity)
         instance.save()
         return instance
 
 
 class OrderCreateSerializer(serializers.Serializer):
-    """
-    Сериализатор для валидации данных при создании нового заказа.
-    Принимает адрес, телефон и ID методов доставки/оплаты.
-    """
+    """Сериализатор для создания нового заказа: адрес, телефон и методы доставки/оплаты."""
     delivery_address = serializers.CharField(max_length=500, required=True)
     contact_phone = serializers.CharField(max_length=20, required=True)
     delivery_method_id = serializers.PrimaryKeyRelatedField(
@@ -414,16 +394,18 @@ class OrderCreateSerializer(serializers.Serializer):
         label="ID Способа оплаты"
     )
 
-    def validate_contact_phone(self, value):
-
-        if not value.replace('+', '').replace('(', '').replace(')', '').replace('-', '').replace(' ', '').isdigit():
+    def validate_contact_phone(self, value: str) -> str:
+        """Проверяет, что телефон содержит только допустимые символы и нужную длину."""
+        cleaned = value.replace('+', '').replace('(', '').replace(')', '').replace('-', '').replace(' ', '')
+        if not cleaned.isdigit():
             raise serializers.ValidationError(
                 "Телефон может содержать только цифры, пробелы, скобки, тире и знак плюса.")
         if len(value) < 7:
             raise serializers.ValidationError("Слишком короткий номер телефона.")
         return value
 
-    def validate_delivery_address(self, value):
+    def validate_delivery_address(self, value: str) -> str:
+        """Проверяет минимальную длину адреса доставки."""
         if len(value.strip()) < 10:
             raise serializers.ValidationError("Слишком короткий адрес доставки.")
         return value
@@ -432,23 +414,23 @@ class OrderCreateSerializer(serializers.Serializer):
 class CustomUserDetailsSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-
         fields = ('id', 'username', 'email', 'first_name', 'last_name', 'created_at', 'last_login')
-
         read_only_fields = ('id', 'username', 'created_at', 'last_login')
 
-    def validate_email(self, value):
-
+    def validate_email(self, value: str) -> str:
+        """Проверяет уникальность email при обновлении пользователя."""
         if User.objects.filter(email=value).exclude(pk=self.instance.pk).exists():
             raise serializers.ValidationError("Этот email уже используется другим пользователем.")
         return value
 
-    def validate_first_name(self, value):
+    def validate_first_name(self, value: str) -> str:
+        """Проверяет минимальную длину имени пользователя."""
         if len(value) > 0 and len(value) < 2:
             raise serializers.ValidationError("Имя должно содержать минимум 2 символа.")
         return value
 
-    def validate_last_name(self, value):
+    def validate_last_name(self, value: str) -> str:
+        """Проверяет минимальную длину фамилии пользователя."""
         if len(value) > 0 and len(value) < 2:
             raise serializers.ValidationError("Фамилия должна содержать минимум 2 символа.")
         return value
