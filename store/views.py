@@ -1,18 +1,23 @@
 import random
+import uuid
 from decimal import Decimal
 from typing import List, Any, Optional, Type
 
 from django.db.models import OuterRef, Subquery, DecimalField, Case, When, F, QuerySet
 from django.db.models.functions import Coalesce
+from rest_framework.permissions import IsAuthenticated
+from social_core.exceptions import AuthException
+from social_django.utils import load_strategy, load_backend
+
 from .tasks import send_order_confirmation_email
 from django.contrib.auth import get_user_model, authenticate
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework.authentication import TokenAuthentication
+from rest_framework.authentication import TokenAuthentication, SessionAuthentication
 from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
 from .serializers import LoginOrRegisterSerializer, CartItemSerializer, OrderSerializer, OrderCreateSerializer, \
     DeliveryMethodSerializer, PaymentMethodSerializer, BannerSerializer, CategorySerializer, CategoryDetailSerializer, \
-    ReviewSerializer
+    ReviewSerializer, CustomUserDetailsSerializer
 from django.utils import timezone
 from rest_framework import status, mixins
 from django.db import transaction
@@ -739,3 +744,44 @@ class CartItemViewSet(
                 f"Недостаточно товара '{product.name}' на складе. Доступно: {product.stock} шт."
             )
         serializer.save()
+
+
+class GoogleLoginView(APIView):
+    """
+    Эндпоинт для входа через Google с использованием access_token, полученного на фронтенде.
+    """
+    permission_classes = []
+    authentication_classes = []
+
+    def post(self, request, *args, **kwargs):
+        access_token = request.data.get('access_token')
+        if not access_token:
+            return Response(
+                {"detail": "Требуется access_token."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        strategy = load_strategy(request)
+        backend = load_backend(strategy=strategy, name='google-oauth2', redirect_uri=None)
+
+        try:
+            user = backend.do_auth(access_token)
+
+        except AuthException as e:
+            return Response({"detail": f"Ошибка аутентификации Google: {e}"}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"detail": f"Произошла ошибка сервера: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        if user and user.is_active:
+            token, _ = Token.objects.get_or_create(user=user)
+            user_data = CustomUserDetailsSerializer(user, context={'request': request}).data
+
+            return Response({
+                'token': token.key,
+                'user': user_data
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response(
+                {"detail": "Не удалось войти с помощью Google."},
+                status=status.HTTP_400_BAD_REQUEST
+            )

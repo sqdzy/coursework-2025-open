@@ -18,7 +18,7 @@ django-cors-headers
 # PDF & Image Generation
 Pillow
 weasyprint==65.1
-whitenoisedocker
+whitenoise
 # Faker
 Faker
 
@@ -32,3 +32,6 @@ django-silk
 celery
 redis[hiredis]
 django-celery-beat
+
+#Google ouath
+social-auth-app-django
