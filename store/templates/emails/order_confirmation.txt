@@ -1,0 +1,15 @@
+Здравствуйте, {{ user.first_name|default:user.username }}!
+
+Ваш заказ №{{ order.id }} на сумму {{ calculated_total|floatformat:2 }} ₽ успешно оформлен.
+Мы свяжемся с вами в ближайшее время для подтверждения деталей.
+
+Детали заказа:
+{% for item in order.items.all %}- {{ item.product.name }} - {{ item.qty }} шт. x {{ item.price_per_item|floatformat:2 }} ₽
+{% endfor %}
+Статус заказа: {{ order.status.status }}
+Адрес доставки: {{ order.delivery_address }}
+
+--
+Спасибо за покупку!
+Команда GameGear
+{{ site_url }}

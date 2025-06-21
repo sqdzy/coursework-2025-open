@@ -1,8 +1,10 @@
 import random
+from decimal import Decimal
 from typing import List, Any, Optional, Type
 
 from django.db.models import OuterRef, Subquery, DecimalField, Case, When, F, QuerySet
 from django.db.models.functions import Coalesce
+from .tasks import send_order_confirmation_email
 from django.contrib.auth import get_user_model, authenticate
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.authentication import TokenAuthentication
@@ -29,6 +31,7 @@ from .models import Product, ProductImage, Category, Brand, ProductFeatureValue
 from .serializers import ProductSerializer, ProductListSerializer
 from rest_framework import serializers as rest_serializers
 from . import serializers
+
 
 class IsOwnerOrReadOnly(permissions.BasePermission):
     """
@@ -207,11 +210,11 @@ class ProductViewSet(viewsets.ModelViewSet):
                 output_field=DecimalField(max_digits=12, decimal_places=2)
             )
         ).select_related('category', 'brand') \
-         .prefetch_related(
-             Prefetch('images', queryset=ProductImage.objects.filter(main_image=True), to_attr='main_image_list'),
-             Prefetch('feature_values',
-                      queryset=ProductFeatureValue.objects.select_related('feature').order_by('feature__name'))
-         ).order_by('-created_at')
+            .prefetch_related(
+            Prefetch('images', queryset=ProductImage.objects.filter(main_image=True), to_attr='main_image_list'),
+            Prefetch('feature_values',
+                     queryset=ProductFeatureValue.objects.select_related('feature').order_by('feature__name'))
+        ).order_by('-created_at')
         return queryset
 
     def get_serializer_class(self) -> Any:
@@ -294,60 +297,63 @@ class OrderViewSet(viewsets.ModelViewSet):
             return base.all().order_by('-order_date')
         return base.filter(user=user).order_by('-order_date')
 
-    def create(self, request: Any, *args: Any, **kwargs: Any) -> Response:
-        """
-        Создание заказа на основе содержимого корзины с проверкой запасов
-        и атомарным обновлением.
-        """
-        create_ser = self.get_serializer(data=request.data)
-        create_ser.is_valid(raise_exception=True)
-        validated = create_ser.validated_data
+    def create(self, request, *args, **kwargs):
+        create_serializer = self.get_serializer(data=request.data)
+        create_serializer.is_valid(raise_exception=True)
+        validated_data = create_serializer.validated_data
         user = request.user
+
         try:
             with transaction.atomic():
                 cart_items = CartItem.objects.filter(user=user).select_for_update().select_related('product')
+
                 if not cart_items:
                     return Response({"detail": "Ваша корзина пуста."}, status=status.HTTP_400_BAD_REQUEST)
+
                 products_to_update = []
+                order_total_amount = Decimal('0.00')
                 for item in cart_items:
                     product = item.product
                     product.refresh_from_db(fields=['stock'])
                     if product.stock < item.quantity:
-                        raise rest_serializers.ValidationError(
-                            f"Недостаточно товара '{product.name}' на складе. "
-                            f"Доступно: {product.stock} шт., в заказе: {item.quantity} шт."
-                        )
+                        raise rest_serializers.ValidationError(f"Недостаточно товара '{product.name}'...")
+
                     product.stock -= item.quantity
                     products_to_update.append(product)
-                new_status, _ = OrderStatus.objects.get_or_create(
-                    status="Новый", defaults={'description': 'Заказ создан'}
-                )
+                    order_total_amount += item.total_price
+
+                new_status, _ = OrderStatus.objects.get_or_create(status="Новый",
+                                                                  defaults={'description': 'Заказ создан'})
                 order = Order.objects.create(
                     user=user,
-                    delivery_address=validated['delivery_address'],
-                    contact_phone=validated['contact_phone'],
-                    delivery_method=validated['delivery_method'],
-                    payment=validated['payment_method'],
+                    delivery_address=validated_data['delivery_address'],
+                    contact_phone=validated_data['contact_phone'],
+                    delivery_method=validated_data['delivery_method'],
+                    payment=validated_data['payment_method'],
                     status=new_status
                 )
-                order_items = [
-                    OrderItem(
-                        order=order,
-                        product=item.product,
-                        qty=item.quantity,
-                        price_per_item=item.current_price_per_item
-                    ) for item in cart_items
-                ]
-                OrderItem.objects.bulk_create(order_items)
+
+                order_items_to_create = [OrderItem(order=order, product=item.product, qty=item.quantity,
+                                                   price_per_item=item.current_price_per_item) for item in cart_items]
+                OrderItem.objects.bulk_create(order_items_to_create)
                 Product.objects.bulk_update(products_to_update, ['stock'])
                 cart_items.delete()
+
+                transaction.on_commit(
+                    lambda: send_order_confirmation_email.delay(order.id, str(order_total_amount))
+                )
+
                 final_order = self.get_queryset().get(pk=order.pk)
-                read_ser = OrderSerializer(final_order, context=self.get_serializer_context())
-                headers = self.get_success_headers(read_ser.data)
-                return Response(read_ser.data, status=status.HTTP_201_CREATED, headers=headers)
+                read_serializer = OrderSerializer(final_order, context=self.get_serializer_context())
+                return Response(read_serializer.data, status=status.HTTP_201_CREATED,
+                                headers=self.get_success_headers(read_serializer.data))
+
         except rest_serializers.ValidationError as e:
             return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
-        except Exception:
+        except Exception as e:
+            import traceback
+            print(f"Error creating order for user {user.id}: {e}")
+            print(traceback.format_exc())
             return Response({"detail": "Произошла непредвиденная ошибка при создании заказа."},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -527,10 +533,10 @@ class HomepageDataView(APIView):
         ).select_related('promotion')
         promo_ids = list(promo_base.values_list('product_id', flat=True))
         promo_qs = annotate_product_prices(Product.objects.filter(id__in=promo_ids)) \
-            .select_related('category', 'brand') \
-            .prefetch_related(
-                Prefetch('images', queryset=ProductImage.objects.filter(main_image=True), to_attr='main_image_list')
-            ).order_by('?')[:10]
+                       .select_related('category', 'brand') \
+                       .prefetch_related(
+            Prefetch('images', queryset=ProductImage.objects.filter(main_image=True), to_attr='main_image_list')
+        ).order_by('?')[:10]
         promo_ser = ProductListSerializer(promo_qs, many=True, context={'request': request})
 
         latest_base = Product.objects.all().order_by('-created_at')[:12]
@@ -538,8 +544,8 @@ class HomepageDataView(APIView):
         latest_qs = annotate_product_prices(Product.objects.filter(id__in=latest_ids)) \
             .select_related('category', 'brand') \
             .prefetch_related(
-                Prefetch('images', queryset=ProductImage.objects.filter(main_image=True), to_attr='main_image_list')
-            ).order_by('-created_at')
+            Prefetch('images', queryset=ProductImage.objects.filter(main_image=True), to_attr='main_image_list')
+        ).order_by('-created_at')
         latest_ser = ProductListSerializer(latest_qs, many=True, context={'request': request})
 
         data: dict = {
@@ -579,6 +585,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
         qs = super().get_queryset()
         if self.action == 'retrieve' and 'pk' in self.kwargs:
             products_qs = Product.objects.all()
+
             def annotate_prices(qs_inner: QuerySet) -> QuerySet:
                 now = timezone.now()
                 active_sq = PromotionalProduct.objects.filter(
@@ -588,7 +595,8 @@ class CategoryViewSet(viewsets.ModelViewSet):
                     promotion__end_date__gte=now
                 ).order_by('promotional_price').values('promotional_price')[:1]
                 return qs_inner.annotate(
-                    current_promotional_price=Subquery(active_sq, output_field=DecimalField(max_digits=12, decimal_places=2)),
+                    current_promotional_price=Subquery(active_sq,
+                                                       output_field=DecimalField(max_digits=12, decimal_places=2)),
                     actual_price=Coalesce(
                         Case(
                             When(current_promotional_price__isnull=False,
@@ -601,21 +609,26 @@ class CategoryViewSet(viewsets.ModelViewSet):
                         output_field=DecimalField(max_digits=12, decimal_places=2)
                     )
                 )
+
             annotated = annotate_prices(products_qs)
+
             class DummyProductFilterView:
                 filter_backends = self.product_filter_backends
                 ordering_fields = self.product_ordering_fields
                 filterset_fields = self.product_filterset_fields
                 request = self.request
+
                 def get_queryset(self_inner) -> QuerySet: return annotated
+
                 format_kwarg = None
+
             filtered = annotated
             for backend in list(DummyProductFilterView().filter_backends):
                 filtered = backend().filter_queryset(self.request, filtered, DummyProductFilterView())
             final_qs = filtered.select_related('brand') \
                 .prefetch_related(
-                    Prefetch('images', queryset=ProductImage.objects.filter(main_image=True), to_attr='main_image_list')
-                ).order_by('-created_at')
+                Prefetch('images', queryset=ProductImage.objects.filter(main_image=True), to_attr='main_image_list')
+            ).order_by('-created_at')
             qs = qs.prefetch_related(Prefetch('products', queryset=final_qs))
         return qs
 
@@ -688,9 +701,9 @@ class CartItemViewSet(
         return CartItem.objects.filter(user=user) \
             .select_related('product', 'product__brand') \
             .prefetch_related(
-                Prefetch('product__images', queryset=ProductImage.objects.filter(main_image=True),
-                         to_attr='main_image_list')
-            ).order_by('-added_at')
+            Prefetch('product__images', queryset=ProductImage.objects.filter(main_image=True),
+                     to_attr='main_image_list')
+        ).order_by('-added_at')
 
     def perform_create(self, serializer: CartItemSerializer) -> None:
         """
