@@ -24,3 +24,11 @@ Faker
 
 #Sentry
 sentry-sdk[django]
+
+#Silk
+django-silk
+
+#Celery
+celery
+redis[hiredis]
+django-celery-beat

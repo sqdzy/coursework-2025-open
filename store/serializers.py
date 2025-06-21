@@ -142,6 +142,7 @@ class ReviewSerializer(serializers.ModelSerializer):
 
 
 class ProductSerializer(serializers.ModelSerializer):
+    """Сериализатор для детального представления товара с аннотированными ценами."""
     category = CategorySerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
     images = ProductImageSerializer(many=True, read_only=True)
@@ -153,6 +154,7 @@ class ProductSerializer(serializers.ModelSerializer):
     promotional_price = serializers.DecimalField(source='current_promotional_price', max_digits=12, decimal_places=2,
                                                  read_only=True, required=False, allow_null=True)
     price = serializers.DecimalField(source='actual_price', max_digits=12, decimal_places=2, read_only=True)
+    stock = serializers.IntegerField(read_only=True)
 
     category_id = serializers.PrimaryKeyRelatedField(queryset=Category.objects.all(), source='category',
                                                      write_only=True, label="Category ID")
@@ -162,12 +164,12 @@ class ProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'id', 'name', 'price', 'base_price', 'promotional_price',
+            'id', 'name', 'price', 'base_price', 'promotional_price', 'stock',
             'category', 'category_id', 'brand', 'brand_id', 'created_at',
             'images', 'features', 'average_rating', 'review_count',
         ]
         read_only_fields = ['id', 'created_at', 'images', 'features', 'average_rating', 'review_count', 'price',
-                            'base_price', 'promotional_price']
+                            'base_price', 'promotional_price', 'stock']
 
     def get_average_rating(self, obj: Product) -> float:
         """Возвращает средний рейтинг товара."""
@@ -185,7 +187,8 @@ class ProductListSerializer(serializers.ModelSerializer):
     average_rating = serializers.FloatField(source='get_average_rating', read_only=True)
     review_count = serializers.IntegerField(source='get_review_count', read_only=True)
     base_price = serializers.DecimalField(source='price', max_digits=12, decimal_places=2, read_only=True)
-    promotional_price = serializers.DecimalField(source='current_promotional_price', max_digits=12, decimal_places=2, read_only=True, required=False, allow_null=True)
+    promotional_price = serializers.DecimalField(source='current_promotional_price', max_digits=12, decimal_places=2,
+                                                 read_only=True, required=False, allow_null=True)
     price = serializers.DecimalField(source='actual_price', max_digits=12, decimal_places=2, read_only=True)
     stock = serializers.IntegerField(read_only=True)
 

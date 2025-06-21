@@ -14,17 +14,61 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     restart: unless-stopped
 
+
+  redis:
+      image: redis:7-alpine
+      restart: unless-stopped
+
   web:
     build: .
     volumes:
+
+
+      - static_volume_gg:/app/staticfiles
+
       - media_volume_gg:/app/mediafiles
+
     ports:
       - "127.0.0.1:8001:8000"
     env_file: ./.env
     depends_on:
       - db
+      - redis
+    restart: unless-stopped
+
+  celery_worker:
+    build: .
+    command: celery -A gamegear worker -l info
+    volumes:
+      - media_volume_gg:/app/mediafiles
+    env_file: ./.env
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+
+  celery_beat:
+    build: .
+    command: celery -A gamegear beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    env_file: ./.env
+    depends_on:
+      - db
+      - redis
     restart: unless-stopped
 
 volumes:
   postgres_data_gg:
+  
+  static_volume_gg:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '/var/www/api-gg.familycore.ru/static'
   media_volume_gg:
+    driver: local
+    driver_opts:
+      type: 'none'
+      o: 'bind'
+      device: '/var/www/api-gg.familycore.ru/media' 
+  
