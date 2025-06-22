@@ -14,7 +14,7 @@ const CONTACTS = {
 };
 
 
-const YANDEX_MAPS_API_KEY = process.env.REACT_APP_YANDEX_MAPS_API_KEY;
+const YANDEX_MAPS_API_KEY = 'b6ee67df-63d2-48e6-aa3f-c0176ea4beae';
 
 
 const ContactItem = ({icon, label, value, href}) => (
@@ -36,16 +36,6 @@ const ContactItem = ({icon, label, value, href}) => (
 
 
 const SupportPage = () => {
-
-    if (!YANDEX_MAPS_API_KEY) {
-        console.error("Yandex Maps API Key is not configured in .env file (REACT_APP_YANDEX_MAPS_API_KEY)");
-
-        return (
-            <div className="container mx-auto px-4 py-10 text-center">
-                <ErrorMessage message="Ошибка конфигурации: Ключ API Яндекс Карт не найден."/>
-            </div>
-        );
-    }
 
     return (
         <div className="container mx-auto px-4 py-8 md:py-12">
