@@ -6,6 +6,7 @@ from typing import List, Any, Optional, Type
 from django.db.models import OuterRef, Subquery, DecimalField, Case, When, F, QuerySet
 from django.db.models.functions import Coalesce
 from rest_framework.permissions import IsAuthenticated
+from silk.profiling.profiler import silk_profile
 from social_core.exceptions import AuthException
 from social_django.utils import load_strategy, load_backend
 
@@ -490,6 +491,7 @@ class HomepageDataView(APIView):
 
     permission_classes: List[Any] = [permissions.AllowAny]
 
+    @silk_profile(name="Get Homepage Data")
     def get(self, request: Any, format: Optional[str] = None) -> Response:
         """
         GET: собирает и возвращает данные:
@@ -753,7 +755,7 @@ class GoogleLoginView(APIView):
     permission_classes = []
     authentication_classes = []
 
-    def post(self, request, *args, **kwargs):
+    def post(self, request, *args, **kwargs) -> Response:
         access_token = request.data.get('access_token')
         if not access_token:
             return Response(

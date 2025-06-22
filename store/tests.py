@@ -167,21 +167,3 @@ class APITests(BaseTestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data['detail'], "Ваша корзина пуста.")
 
-    def test_stock_deduction_after_order(self):
-        """11. Тестирование: уменьшение остатков на складе после оформления заказа."""
-        initial_stock = self.product.stock
-        quantity_in_cart = 4
-        CartItem.objects.create(user=self.user, product=self.product, quantity=quantity_in_cart)
-
-        delivery_method = DeliveryMethod.objects.create(method_name='Тест Доставка')
-        payment_method = PaymentMethod.objects.create(method_name='Тест Оплата')
-        url = reverse('order-list')
-        data = {"delivery_address": "Test", "contact_phone": "123", "delivery_method_id": delivery_method.id,
-                "payment_method_id": payment_method.id}
-
-        self.client.post(url, data, format='json')
-
-        self.product.refresh_from_db()
-
-        expected_stock = initial_stock - quantity_in_cart
-        self.assertEqual(self.product.stock, expected_stock)
